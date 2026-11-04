@@ -1,0 +1,65 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sympldiff"
+version = "0.1.0"
+description = "Exact Volume-Preserving Diffeomorphic Registration and Symplectic Shear Splitting with O(1)-Memory Reversible Autograd in PyTorch"
+readme = "README.md"
+authors = [
+    { name = "Alvaro Garcia", email = "alvaro.garcia.bme@gmail.com" }
+]
+license = { text = "MIT" }
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Medical Science Apps.",
+    "Topic :: Scientific/Engineering :: Mathematics",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+keywords = [
+    "diffeomorphic-registration",
+    "symplectic-geometry",
+    "volume-preserving",
+    "reversible-autograd",
+    "medical-imaging",
+    "pytorch",
+    "computational-anatomy",
+    "jacobian-determinant"
+]
+requires-python = ">=3.9"
+dependencies = [
+    "torch>=2.0.0",
+    "numpy>=1.22.0",
+    "scipy>=1.9.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "matplotlib>=3.6.0",
+]
+docs = [
+    "mkdocs>=1.4.0",
+    "mkdocstrings[python]>=0.20.0",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/alvaro-garcia-bme/sympldiff"
+"Bug Tracker" = "https://github.com/alvaro-garcia-bme/sympldiff/issues"
+"Documentation" = "https://github.com/alvaro-garcia-bme/sympldiff#readme"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v --strict-markers"

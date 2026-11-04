@@ -1,0 +1,19 @@
+cff-version: 1.2.0
+message: "If you use sympldiff in your research, please cite both the software paper in JOSS and the foundational methodology article."
+title: "sympldiff: Exact Volume-Preserving Diffeomorphic Registration and Symplectic Shear Splitting with O(1)-Memory Reversible Autograd in PyTorch"
+version: 0.1.0
+date-released: 2026-11-04
+url: "https://github.com/alvaro-garcia-bme/sympldiff"
+authors:
+  - family-names: "Garcia"
+    given-names: "Alvaro"
+    affiliation: "Universidad Carlos III de Madrid"
+preferred-citation:
+  type: article
+  authors:
+    - family-names: "Garcia"
+      given-names: "Alvaro"
+  title: "sympldiff: Exact Volume-Preserving Diffeomorphic Registration and Symplectic Shear Splitting with O(1)-Memory Reversible Autograd in PyTorch"
+  journal: "Journal of Open Source Software"
+  year: 2026
+  publisher: "The Open Journal"
