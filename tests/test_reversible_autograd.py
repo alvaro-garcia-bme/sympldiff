@@ -1,19 +1,10 @@
-"""
-Unit Test: Reversible O(1)-Memory Autograd Exact Equivalence
-============================================================
-Verifies that `ReversibleSymplecticCurlFunction` produces gradients with respect to
-learnable shear parameters that match standard unrolled PyTorch backpropagation to
-machine tolerance (~1e-6 in float32 / ~1e-12 in float64) while storing zero intermediate states.
-"""
-
 import pytest
 import torch
 from sympldiff.autograd import ReversibleSymplecticCurlFunction
 from sympldiff.operators import eval_sobolev_stream_2d_torch
 
 
-def _unrolled_standard_autograd_forward(x_in, y_in, z_in, coeffs, freqs, dt, bc_mode, strang_symmetric, margin):
-    """Standard unrolled forward pass caching all activations linearly."""
+def _unrolled_standard_forward(x_in, y_in, z_in, coeffs, freqs, dt, bc_mode, strang_symmetric, margin):
     x = x_in.clone()
     y = y_in.clone()
     z = z_in.clone()
@@ -41,12 +32,11 @@ def _unrolled_standard_autograd_forward(x_in, y_in, z_in, coeffs, freqs, dt, bc_
 def test_reversible_autograd_gradient_equivalence():
     torch.manual_seed(42)
     device = torch.device("cpu")
-    dtype = torch.float64  # Use double precision to measure numerical deviation exactly
+    dtype = torch.float64
 
     u = torch.linspace(-0.7, 0.7, 6, dtype=dtype, device=device)
     Z, Y, X = torch.meshgrid(u, u, u, indexing="ij")
 
-    # 3 cascade steps
     coeffs_rev = (torch.randn(3, 6, 2, 2, 4, dtype=dtype, device=device) * 0.1).requires_grad_(True)
     coeffs_unroll = coeffs_rev.detach().clone().requires_grad_(True)
 
@@ -55,28 +45,24 @@ def test_reversible_autograd_gradient_equivalence():
     bc_mode = "compact_dirichlet"
     margin = 0.15
 
-    # 1. Forward and backward with Reversible O(1) autograd
     x_r, y_r, z_r = ReversibleSymplecticCurlFunction.apply(
         X, Y, Z, coeffs_rev, freqs, dt, bc_mode, (1.0, 1.0, 1.0), True, margin
     )
     loss_r = (x_r ** 2 + y_r ** 2 + z_r ** 2).sum()
     loss_r.backward()
 
-    # 2. Forward and backward with standard unrolled autograd
-    x_u, y_u, z_u = _unrolled_standard_autograd_forward(
+    x_u, y_u, z_u = _unrolled_standard_forward(
         X, Y, Z, coeffs_unroll, freqs, dt, bc_mode, True, margin
     )
     loss_u = (x_u ** 2 + y_u ** 2 + z_u ** 2).sum()
     loss_u.backward()
 
-    # Verify forward equality
     max_fwd_diff = max(
         torch.max(torch.abs(x_r - x_u)).item(),
         torch.max(torch.abs(y_r - y_u)).item(),
         torch.max(torch.abs(z_r - z_u)).item(),
     )
-    assert max_fwd_diff < 1e-13, f"Forward passes diverge: {max_fwd_diff:.3e}"
+    assert max_fwd_diff < 1e-13
 
-    # Verify gradient equality
     max_grad_diff = torch.max(torch.abs(coeffs_rev.grad - coeffs_unroll.grad)).item()
-    assert max_grad_diff < 1e-12, f"Reversible gradients diverge from unrolled autograd: {max_grad_diff:.3e}"
+    assert max_grad_diff < 1e-12

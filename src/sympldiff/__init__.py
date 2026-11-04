@@ -1,13 +1,5 @@
-"""
-sympldiff: Exact Volume-Preserving Diffeomorphic Registration in PyTorch
-========================================================================
-A high-performance scientific Python library providing exact volume-preserving
-and prescribed-compressibility diffeomorphic coordinate transformations with
-O(1)-memory reversible backpropagation for medical imaging and computational anatomy.
-"""
-
 __version__ = "0.1.0"
-__author__ = "sympldiff contributors"
+__author__ = "Alvaro Garcia"
 __license__ = "MIT"
 
 from .operators import (

@@ -1,23 +1,3 @@
-"""
-Symplectic Coordinate Shear Operators & Mathematical Stream Bases
-=================================================================
-Implements the Lie-Helmholtz volume-preserving coordinate shear splitting on
-3D domains Omega = [-1, 1]^3.
-
-Each shear stage S_k: R^3 -> R^3 updates a single active coordinate using a smooth
-potential stream function of the two passive coordinates:
-    S_1: (x, y, z) -> (x,  y + dt * f_1(x, z),  z)
-    S_2: (x, y, z) -> (x,  y,  z + dt * f_2(x, y))
-    S_3: (x, y, z) -> (x,  y,  z + dt * f_3(y, x))
-    S_4: (x, y, z) -> (x + dt * f_4(y, z),  y,  z)
-    S_5: (x, y, z) -> (x + dt * f_5(z, y),  y,  z)
-    S_6: (x, y, z) -> (x,  y + dt * f_6(z, x),  z)
-
-Every stage has a triangular Jacobian matrix with unit diagonal elements, yielding:
-    det(D S_k(x)) === 1.000000000000000
-to exact IEEE-754 machine precision without numerical Taylor approximations.
-"""
-
 from typing import Tuple, List, Union, Optional
 import numpy as np
 import torch
@@ -34,34 +14,7 @@ def eval_sobolev_stream_2d_np(
     margin: float = 0.15,
     need_grad: bool = True
 ) -> Tuple[np.ndarray, Optional[np.ndarray], Optional[np.ndarray]]:
-    """
-    Evaluates 2D Sobolev H^2-normalized trigonometric stream function f(u, v)
-    and its analytical derivatives in NumPy.
-
-    Parameters
-    ----------
-    u, v : np.ndarray
-        Passive coordinate arrays.
-    coeffs : np.ndarray
-        Fourier coefficient array of shape (len(freqs), len(freqs), 4).
-    freqs : tuple of int
-        Harmonic frequencies (default (1, 2)).
-    bc_mode : str
-        Boundary mode ('periodic', 'dirichlet', or 'compact_dirichlet').
-    aniso_scale : float
-        Anisotropic metric scaling factor.
-    margin : float
-        Safety margin for compact Dirichlet boundary.
-    need_grad : bool
-        Whether to compute analytical partial derivatives df/du and df/dv.
-
-    Returns
-    -------
-    f : np.ndarray
-        Evaluated stream potential.
-    df_du, df_dv : np.ndarray or None
-        Analytical derivatives.
-    """
+    """Evaluates 2D Sobolev stream potential and analytical gradients."""
     H = np.zeros_like(u, dtype=np.float64)
     dH_du = np.zeros_like(u, dtype=np.float64) if need_grad else None
     dH_dv = np.zeros_like(u, dtype=np.float64) if need_grad else None
@@ -89,9 +42,7 @@ def eval_sobolev_stream_2d_np(
             w, _, _ = boundary_envelope_np(u, v, bc_mode=bc_mode, margin=margin)
             return w * H, None, None
         w, dw_du, dw_dv = boundary_envelope_np(u, v, bc_mode=bc_mode, margin=margin)
-        dH_du_env = dw_du * H + w * dH_du
-        dH_dv_env = dw_dv * H + w * dH_dv
-        return w * H, dH_du_env, dH_dv_env
+        return w * H, dw_du * H + w * dH_du, dw_dv * H + w * dH_dv
 
     return H, dH_du, dH_dv
 
@@ -105,10 +56,7 @@ def eval_sobolev_stream_2d_torch(
     aniso_scale: float = 1.0,
     margin: float = 0.15
 ) -> torch.Tensor:
-    """
-    Evaluates 2D Sobolev H^2-normalized trigonometric stream function in PyTorch.
-    Supports autograd through both coordinates and coefficients.
-    """
+    """Evaluates 2D Sobolev stream potential in PyTorch."""
     pi = torch.tensor(np.pi, device=u.device, dtype=u.dtype)
     H = torch.zeros_like(u)
     sv_list = [torch.sin(fy * pi * v) for fy in freqs]
@@ -134,10 +82,7 @@ def eval_sobolev_stream_2d_torch(
 
 
 class SymplecticCurlDiffeo3D_NP:
-    """
-    NumPy reference implementation of 3D Symplectic Diffeomorphic Splitting.
-    Provides forward mapping, exact closed-form inverse, and exact analytical Jacobian.
-    """
+    """NumPy reference implementation of 3D volume-preserving shear splitting."""
 
     def __init__(
         self,
@@ -166,7 +111,7 @@ class SymplecticCurlDiffeo3D_NP:
             s_mean / sy,
         )
 
-    def _single_stage_forward(self, x, y, z, stage_idx, c_stage, dt_stage):
+    def _stage_forward(self, x, y, z, stage_idx, c_stage, dt_stage):
         sc = self.aniso_scales[stage_idx]
         if stage_idx == 0:
             f, _, _ = eval_sobolev_stream_2d_np(x, z, c_stage, self.freqs, self.bc_mode, sc, self.margin, need_grad=False)
@@ -189,9 +134,6 @@ class SymplecticCurlDiffeo3D_NP:
         return x, y, z
 
     def forward(self, X: np.ndarray, Y: np.ndarray, Z: np.ndarray, coeffs_list: Union[np.ndarray, List[np.ndarray]]):
-        """
-        Computes forward diffeomorphic deformation: (X, Y, Z) -> (x, y, z).
-        """
         if isinstance(coeffs_list, np.ndarray) and coeffs_list.ndim == 4:
             coeffs_list = [coeffs_list]
         x, y, z = X.astype(np.float64).copy(), Y.astype(np.float64).copy(), Z.astype(np.float64).copy()
@@ -200,19 +142,15 @@ class SymplecticCurlDiffeo3D_NP:
             if self.strang_symmetric:
                 half_dt = 0.5 * self.dt
                 for s_idx in range(6):
-                    x, y, z = self._single_stage_forward(x, y, z, s_idx, c_step[s_idx], half_dt)
+                    x, y, z = self._stage_forward(x, y, z, s_idx, c_step[s_idx], half_dt)
                 for s_idx in reversed(range(6)):
-                    x, y, z = self._single_stage_forward(x, y, z, s_idx, c_step[s_idx], half_dt)
+                    x, y, z = self._stage_forward(x, y, z, s_idx, c_step[s_idx], half_dt)
             else:
                 for s_idx in range(6):
-                    x, y, z = self._single_stage_forward(x, y, z, s_idx, c_step[s_idx], self.dt)
+                    x, y, z = self._stage_forward(x, y, z, s_idx, c_step[s_idx], self.dt)
         return x, y, z
 
     def inverse(self, X_new: np.ndarray, Y_new: np.ndarray, Z_new: np.ndarray, coeffs_list: Union[np.ndarray, List[np.ndarray]]):
-        """
-        Computes exact O(1) closed-form analytical inverse: (X_new, Y_new, Z_new) -> (X, Y, Z).
-        Requires zero numerical inversion or grid interpolation.
-        """
         if isinstance(coeffs_list, np.ndarray) and coeffs_list.ndim == 4:
             coeffs_list = [coeffs_list]
         x, y, z = X_new.astype(np.float64).copy(), Y_new.astype(np.float64).copy(), Z_new.astype(np.float64).copy()
@@ -221,18 +159,15 @@ class SymplecticCurlDiffeo3D_NP:
             if self.strang_symmetric:
                 half_dt = -0.5 * self.dt
                 for s_idx in range(6):
-                    x, y, z = self._single_stage_forward(x, y, z, s_idx, c_step[s_idx], half_dt)
+                    x, y, z = self._stage_forward(x, y, z, s_idx, c_step[s_idx], half_dt)
                 for s_idx in reversed(range(6)):
-                    x, y, z = self._single_stage_forward(x, y, z, s_idx, c_step[s_idx], half_dt)
+                    x, y, z = self._stage_forward(x, y, z, s_idx, c_step[s_idx], half_dt)
             else:
                 for s_idx in reversed(range(6)):
-                    x, y, z = self._single_stage_forward(x, y, z, s_idx, c_step[s_idx], -self.dt)
+                    x, y, z = self._stage_forward(x, y, z, s_idx, c_step[s_idx], -self.dt)
         return x, y, z
 
     def exact_jacobian(self, X: np.ndarray, Y: np.ndarray, Z: np.ndarray, coeffs_list: Union[np.ndarray, List[np.ndarray]]):
-        """
-        Evaluates the exact analytical Jacobian matrix (N, 3, 3) along the deformation trajectory.
-        """
         if isinstance(coeffs_list, np.ndarray) and coeffs_list.ndim == 4:
             coeffs_list = [coeffs_list]
         N = X.size

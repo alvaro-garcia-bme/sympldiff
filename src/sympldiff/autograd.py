@@ -1,41 +1,19 @@
-"""
-Reversible O(1)-Memory Autograd Function in PyTorch
-===================================================
-Provides `ReversibleSymplecticCurlFunction`, a custom `torch.autograd.Function`
-that exploits the exact closed-form analytical inverse of coordinate shear splitting.
-
-Key Features:
-1. True O(1) Memory Footprint:
-   Stores strictly ZERO intermediate spatial activation states during the forward pass.
-   Only the terminal output coordinates (x_L, y_L, z_L) and parameters are retained in `ctx.save_for_backward`.
-2. Exact On-the-Fly Backward State Reconstruction:
-   During `backward()`, previous coordinate states are reconstructed backwards using the exact
-   inverse time schedule (-dt_s).
-3. Gradient Machine Equivalence:
-   Gradients with respect to shear coefficients match standard unrolled PyTorch autograd
-   to ~1e-15 in FP64 and ~1e-7 in FP32, while eliminating the O(L * N_vox) memory bottleneck.
-"""
-
 from typing import Tuple, List
 import torch
 from .operators import eval_sobolev_stream_2d_torch
 
 
 def _get_stage_schedule(strang_symmetric: bool, dt: float) -> List[Tuple[int, float]]:
-    """Generates the ordered stage sequence (stage_index, dt_stage)."""
     if strang_symmetric:
         half_dt = 0.5 * dt
         forward_seq = [(s, half_dt) for s in range(6)]
         backward_seq = [(s, half_dt) for s in reversed(range(6))]
         return forward_seq + backward_seq
-    else:
-        return [(s, dt) for s in range(6)]
+    return [(s, dt) for s in range(6)]
 
 
 class ReversibleSymplecticCurlFunction(torch.autograd.Function):
-    """
-    Differentiable 3D Symplectic Diffeomorphic Splitting with O(1) Activation Memory.
-    """
+    """Custom autograd function reconstructing coordinate states dynamically in backward pass."""
 
     @staticmethod
     def forward(
@@ -86,7 +64,6 @@ class ReversibleSymplecticCurlFunction(torch.autograd.Function):
                     elif s_idx == 5:
                         y = y + dt_s * eval_sobolev_stream_2d_torch(z, x, c_step[5], freqs, bc_mode, sc, margin)
 
-        # Save ONLY the final coordinates and parameters (O(1) memory!)
         ctx.save_for_backward(x, y, z, coeffs)
         ctx.freqs = freqs
         ctx.dt = dt
@@ -188,8 +165,10 @@ class ReversibleSymplecticCurlFunction(torch.autograd.Function):
                     with torch.no_grad():
                         y = y - dt_s * f_val.detach()
                     du, dv, dc = torch.autograd.grad(f_val, (u_in, v_in, c_param), grad_outputs=gy * dt_s)
-                    gz = gz + du
-                    gx = gx + dv
+                    du_val = du if du is not None else 0.0
+                    dv_val = dv if dv is not None else 0.0
+                    gz = gz + du_val
+                    gx = gx + dv_val
                     grad_coeffs[step, s_idx] += dc
 
         return gx, gy, gz, grad_coeffs, None, None, None, None, None, None

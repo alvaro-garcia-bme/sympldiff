@@ -1,15 +1,3 @@
-"""
-Boundary-Preserving Moser-Dacorogna Prescribed-Compressibility Diffeomorphism
-=============================================================================
-Extends volume-preserving diffeomorphisms to compressible anatomical regimes
-(e.g., 4D lung CT respiration, tumor growth, or longitudinal atrophy) by
-factorizing:
-    Psi(x) = Phi_SDiff( D_rho(x) )
-where D_rho: [-1, 1]^3 -> [-1, 1]^3 is a triangular projective (Mobius) bijection
-with strictly positive prescribed Jacobian determinant det(D Psi(x)) = rho(x) > 0,
-exact boundary invariance (0.000000 boundary escape), and exact O(1) closed-form inverse.
-"""
-
 from typing import Tuple, List, Union
 import numpy as np
 from .operators import SymplecticCurlDiffeo3D_NP, eval_sobolev_stream_2d_np
@@ -25,10 +13,6 @@ def _mobius_1d_forward_and_jac(
     max_g: float = 0.65,
     margin: float = 0.25
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """
-    Evaluates 1D boundary-preserving projective-rational bijection on [-1, 1].
-    Maps [-1, 1] -> [-1, 1] bijectively with tau(+-1) = +-1 and strictly positive derivative.
-    """
     c_a = np.zeros_like(coeffs_2d, dtype=np.float64)
     c_b = np.zeros_like(coeffs_2d, dtype=np.float64)
     c_a[:, :, 0] = coeffs_2d[:, :, 0]
@@ -59,7 +43,6 @@ def _mobius_1d_forward_and_jac(
     db_dv1 = sech2_gb * dsb * dgb_dv1
     db_dv2 = sech2_gb * dsb * dgb_dv2
 
-    # Stage 1: Symmetric rational dilation w = (1 + b) * u / (1 + b * u^2)
     u2 = u * u
     denom_b = 1.0 + b * u2
     inv_db = 1.0 / denom_b
@@ -68,7 +51,6 @@ def _mobius_1d_forward_and_jac(
     dw_du = (1.0 + b) * (1.0 - b * u2) * inv_db2
     dw_db = u * (1.0 - u2) * inv_db2
 
-    # Stage 2: Projective Mobius shift u_new = (w + a) / (1 + a * w)
     denom_a = 1.0 + a * w
     inv_da = 1.0 / denom_a
     inv_da2 = inv_da * inv_da
@@ -93,7 +75,6 @@ def _mobius_1d_inverse(
     max_g: float = 0.65,
     margin: float = 0.25
 ) -> np.ndarray:
-    """Exact O(1) closed-form analytical inverse of the 1D projective transformation."""
     c_a = np.zeros_like(coeffs_2d, dtype=np.float64)
     c_b = np.zeros_like(coeffs_2d, dtype=np.float64)
     c_a[:, :, 0] = coeffs_2d[:, :, 0]
@@ -113,15 +94,11 @@ def _mobius_1d_inverse(
 
     w = (u_new - a) / (1.0 - a * u_new)
     disc = np.maximum(0.0, (1.0 + b) ** 2 - 4.0 * b * (w * w))
-    u = (2.0 * w) / (1.0 + b + np.sqrt(disc))
-    return u
+    return (2.0 * w) / (1.0 + b + np.sqrt(disc))
 
 
 class MoserCompressibleSymplecticDiffeo3D_NP:
-    """
-    Composite Prescribed-Compressibility Diffeomorphism: Psi = Phi_SDiff o D_rho.
-    Guarantees det(D Psi(x)) = rho(x) > 0 with exact closed-form inverse and boundary preservation.
-    """
+    """Extension for compressible tissue deformation via Moser-Dacorogna coupling."""
 
     def __init__(
         self,
@@ -149,7 +126,6 @@ class MoserCompressibleSymplecticDiffeo3D_NP:
         Z: np.ndarray,
         density_coeffs: np.ndarray
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-        """Forward mapping through the compressible Mobius cascade."""
         x = X.astype(np.float64).copy()
         y = Y.astype(np.float64).copy()
         z = Z.astype(np.float64).copy()
@@ -174,7 +150,6 @@ class MoserCompressibleSymplecticDiffeo3D_NP:
         Z1: np.ndarray,
         density_coeffs: np.ndarray
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Exact O(1) analytical inverse of the compressible Mobius cascade."""
         x1 = X1.astype(np.float64).copy()
         y1 = Y1.astype(np.float64).copy()
         z1 = Z1.astype(np.float64).copy()
@@ -192,7 +167,6 @@ class MoserCompressibleSymplecticDiffeo3D_NP:
         shear_coeffs_list: Union[np.ndarray, List[np.ndarray]],
         density_coeffs: np.ndarray
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-        """Full forward transform: Psi(x) = Phi_SDiff( D_rho(x) )."""
         x1, y1, z1, exact_rho = self.forward_density_map(X, Y, Z, density_coeffs)
         x_out, y_out, z_out = self.sdiff.forward(x1, y1, z1, shear_coeffs_list)
         return x_out, y_out, z_out, exact_rho
@@ -205,10 +179,8 @@ class MoserCompressibleSymplecticDiffeo3D_NP:
         shear_coeffs_list: Union[np.ndarray, List[np.ndarray]],
         density_coeffs: np.ndarray
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Full exact O(1) closed-form inverse: Psi^-1 = D_rho^-1 o Phi_SDiff^-1."""
         x1, y1, z1 = self.sdiff.inverse(X_out, Y_out, Z_out, shear_coeffs_list)
-        x_in, y_in, z_in = self.inverse_density_map(x1, y1, z1, density_coeffs)
-        return x_in, y_in, z_in
+        return self.inverse_density_map(x1, y1, z1, density_coeffs)
 
     def exact_jacobian_determinant(
         self,
@@ -218,9 +190,6 @@ class MoserCompressibleSymplecticDiffeo3D_NP:
         shear_coeffs_list: Union[np.ndarray, List[np.ndarray]],
         density_coeffs: np.ndarray
     ) -> Tuple[np.ndarray, np.ndarray]:
-        """
-        Computes the exact chain-rule Jacobian determinant det(D Psi(x)) and verifies equality with rho(x).
-        """
         N = X.size
         x = X.ravel().astype(np.float64).copy()
         y = Y.ravel().astype(np.float64).copy()

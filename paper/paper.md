@@ -21,9 +21,9 @@ bibliography: paper.bib
 
 # Summary
 
-Incompressible and diffeomorphic (smooth and invertible) coordinate transformations are fundamental to continuum biomechanics and computational anatomy, where physiological soft tissues—such as contracting myocardium and cerebral white matter—conserve physical volume across dynamic deformation timescales. Standard computational frameworks, such as stationary velocity field (SVF) scaling-and-squaring [@balakrishnan2019voxelmorph] and geodesic LDDMM shooting [@beg2005computing], enforce incompressibility indirectly through numerical ODE integrators or soft regularization penalties. In practice, these approximations incur cumulative volume drift ($\sim 10^{-4} - 10^{-1}$), risk non-physical tissue folding singularities ($\det(D\Phi) \le 0$), require iterative numerical solvers for inversion, and impose a linear memory footprint ($\mathcal{O}(L \cdot N_{\text{vox}})$) that constrains deep neural network training at high 3D resolutions.
+Incompressible diffeomorphic coordinate transformations are fundamental in continuum biomechanics and computational anatomy, where physiological soft tissues—such as contracting myocardium and cerebral white matter—conserve physical volume across deformation timescales. Standard computational frameworks, such as stationary velocity field (SVF) scaling-and-squaring [@balakrishnan2019voxelmorph] and geodesic LDDMM shooting [@beg2005computing], enforce incompressibility indirectly through numerical ODE integrators or soft regularization penalties. In practice, these approximations incur cumulative volume drift ($\sim 10^{-4} - 10^{-1}$), risk non-physical tissue folding singularities ($\det(D\Phi) \le 0$), require iterative numerical solvers for inversion, and impose a linear memory footprint ($\mathcal{O}(L \cdot N_{\text{vox}})$) that constrains deep neural network training at high 3D resolutions.
 
-`sympldiff` is an open-source, high-performance scientific Python package that resolves these dual barriers by implementing an exact Lie-algebraic coordinate shear decomposition with $\mathcal{O}(1)$-activation-memory reversible backpropagation in PyTorch and NumPy. By decomposing the volume-preserving group $\mathrm{SDiff}(\Omega)$ into directional coordinate shears, every stage possesses a triangular Jacobian matrix with unit diagonal entries, guaranteeing $\det(D\Phi(\mathbf{x})) \equiv 1.000000$ to machine precision ($|\det(J) - 1| < 10^{-14}$ in double precision) and exact closed-form analytical invertibility $\Phi^{-1}$ without numerical Taylor approximations or spatial interpolation. Furthermore, `sympldiff` features a custom reversible autograd engine (`ReversibleSymplecticCurlFunction`) that reconstructs intermediate spatial states dynamically backwards, eliminating activation caching and reducing peak training GPU memory by up to $26.9\times$ at $128^3$ resolution.
+`sympldiff` is an open-source scientific Python package that addresses these constraints through a Lie-algebraic coordinate shear decomposition with $\mathcal{O}(1)$-activation-memory reversible backpropagation in PyTorch and NumPy. By decomposing the volume-preserving group $\mathrm{SDiff}(\Omega)$ into directional coordinate shears, every stage possesses a triangular Jacobian matrix with unit diagonal entries, guaranteeing $\det(D\Phi(\mathbf{x})) \equiv 1.000000$ to machine precision ($|\det(J) - 1| < 10^{-14}$ in double precision) and exact closed-form analytical invertibility $\Phi^{-1}$ without numerical Taylor approximations or spatial interpolation. The library provides a custom autograd operator (`ReversibleSymplecticCurlFunction`) that reconstructs intermediate spatial states dynamically backwards, eliminating activation caching and reducing peak training GPU memory by up to $26.9\times$ at $128^3$ resolution.
 
 # Statement of Need
 
@@ -33,20 +33,18 @@ Medical image registration and volumetric deformation modeling face a persistent
 2. **GPU Memory Bottleneck in 3D/4D Volumetric Networks**: Cascaded or deep 3D registration models require storing intermediate forward coordinate tensors at each layer to compute backpropagation gradients. For $L$ cascaded composition steps at high spatial resolutions ($N_{\text{vox}} = 128^3$ or $256^3$), GPU VRAM consumption scales as $\mathcal{O}(L \cdot N_{\text{vox}})$, exceeding modern GPU memory limits and constraining models to shallow architectures or coarse resolutions.
 3. **Boundary Domain Escape**: Unrestricted coupling layers adapted from normalizing flows (e.g., NICE or RealNVP [@dinh2016density]) fail on bounded imaging domains $\Omega = [-1, 1]^3$, pushing boundary tissue coordinates outside the image field of view (FOV).
 
-`sympldiff` fills this critical software gap for the biomedical engineering, scientific machine learning, and computational imaging communities. It provides a modular, drop-in PyTorch `nn.Module` (`SymplecticDiffeo3D`) and NumPy library that guarantees exact physical incompressibility by construction, provides exact $\mathcal{O}(1)$ closed-form inversion, enforces strict compact domain boundary confinement ($0.000000$ boundary escape), and decouples training depth from GPU memory via reversible gradient propagation.
+`sympldiff` fills this software gap for researchers in biomedical engineering, scientific machine learning, and computational imaging. It provides a modular, drop-in PyTorch `nn.Module` (`SymplecticDiffeo3D`) and NumPy library that guarantees exact physical incompressibility by construction, provides exact $\mathcal{O}(1)$ closed-form inversion, enforces strict compact domain boundary confinement ($0.000000$ boundary escape), and decouples training depth from GPU memory via reversible gradient propagation.
 
 # State of the Field
 
-Existing tools in the computational anatomy and medical image registration ecosystem address subsets of these requirements but exhibit structural limitations:
+Existing tools in computational anatomy and medical image registration address subsets of these requirements:
 
-| Feature | ANTsPy [@avants2008symmetric] | VoxelMorph [@balakrishnan2019voxelmorph] | RealNVP [@dinh2016density] | `sympldiff` (Ours) |
-| :--- | :---: | :---: | :---: | :---: |
-| **Physical Volume Conservation** | $\times$ No ($\det \neq 1$) | $\times$ Approximate penalty | $\times$ Expanding/Compressing | **$\checkmark$ Exact machine $\equiv 1.0$** |
-| **Topological Singularity ($\det \le 0$)** | Low ($< 0.1\%$) | Moderate ($0.1 - 2.0\%$) | Non-zero at boundaries | **$\checkmark$ Strictly $0.0000\%$** |
-| **Analytical Inverse ($\Phi^{-1}$)** | $\times$ Iterative numerical | $\times$ Iterative scaling | $\checkmark$ Closed form | **$\checkmark$ Exact $\mathcal{O}(1)$ closed form** |
-| **Backpropagation Memory** | N/A (CPU) | $\mathcal{O}(L \cdot N_{\text{vox}})$ (Linear) | $\mathcal{O}(1)$ (Reversible) | **$\checkmark \mathcal{O}(1)$ (Constant flat)** |
-| **Boundary Domain Escape** | Unrestricted | Unrestricted | $11.5\%$ boundary escape | **$\checkmark 0.000000$ (Compact window)** |
-| **Native PyTorch `nn.Module`** | $\times$ Wrapped C++ | $\checkmark$ Yes | $\checkmark$ Yes | **$\checkmark$ Drop-in module** |
+| Method | Volume preservation | Folding ($\det \le 0$) | Inverse computation | Backprop activation memory | Domain confinement |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| ANTsPy [@avants2008symmetric] | Uncontrolled drift | $< 0.1\%$ | Iterative numerical | N/A (CPU) | Unrestricted |
+| VoxelMorph [@balakrishnan2019voxelmorph] | Approximate penalty | $0.1 - 2.0\%$ | Scaling-and-squaring | $\mathcal{O}(L \cdot N_{\text{vox}})$ | Unrestricted |
+| RealNVP [@dinh2016density] | Density change | Boundary foldings | Closed form | $\mathcal{O}(1)$ | Boundary escape |
+| **`sympldiff` (Ours)** | **Exact machine $\equiv 1.0$** | **Strictly $0.0000\%$** | **Exact closed form** | **$\mathcal{O}(1)$ (Constant)** | **$0.000000$ (Compact window)** |
 
 ### Build vs. Contribute Justification
 
@@ -61,7 +59,7 @@ A central question in open-source development is whether novel capabilities shou
 The architecture of `sympldiff` reflects explicit design choices and mathematical trade-offs to balance theoretical rigor, numerical stability, and computational throughput:
 
 ### 1. Lie-Algebraic Coordinate Shear Splitting vs. General Velocity Fields
-General divergence-free vector fields $\nabla \cdot \mathbf{v} = 0$ in 3D require computationally expensive divergence projection steps (e.g., Helmholtz–Hodge decomposition via 3D FFTs) or numerical ODE solvers that suffer cumulative volume drift. We made the design choice to restrict the Lie algebra $\mathfrak{sdiff}(\Omega)$ to six directional planar coordinate shear families $\mathbf{v}^{(k)}$ [@hairer2006geometric; @lowe2026sympldiff_theory]:
+General divergence-free vector fields $\nabla \cdot \mathbf{v} = 0$ in 3D require computationally expensive divergence projection steps (e.g., Helmholtz–Hodge decomposition via 3D FFTs) or numerical ODE solvers that suffer cumulative volume drift. We restricted the Lie algebra $\mathfrak{sdiff}(\Omega)$ to six directional planar coordinate shear families $\mathbf{v}^{(k)}$ [@hairer2006geometric; @lowe2026sympldiff_theory]:
 
 $$\mathbf{v}^{(1)} = \begin{pmatrix} 0 \\ f_1(x, z) \\ 0 \end{pmatrix}, \quad \mathbf{v}^{(2)} = \begin{pmatrix} 0 \\ 0 \\ f_2(x, y) \end{pmatrix}, \quad \dots, \quad \mathbf{v}^{(6)} = \begin{pmatrix} 0 \\ f_6(z, x) \\ 0 \end{pmatrix}$$
 
@@ -82,14 +80,14 @@ For anatomical organs where physiological volume changes occur (e.g., lung respi
 
 # Research Impact Statement
 
-`sympldiff` has demonstrated immediate research utility in high-resolution computational anatomy and biomechanics:
+`sympldiff` has demonstrated immediate utility in high-resolution computational anatomy and biomechanics:
 
-- **Empirical Clinical Benchmarking**: In rigorous multi-cohort evaluation on clinical 4D cardiac cine-MRI (ACDC, $N=20$) and 3D neuroimaging (OASIS-1, $N=15$) [@lowe2026sympldiff_theory], `sympldiff` eliminated topological folding singularities ($0.0000\%$ inverted voxels) while matching deformable shape alignment accuracy.
+- **Empirical Clinical Benchmarking**: In multi-cohort evaluation on clinical 4D cardiac cine-MRI (ACDC, $N=20$) and 3D neuroimaging (OASIS-1, $N=15$) [@lowe2026sympldiff_theory], `sympldiff` eliminated topological folding singularities ($0.0000\%$ inverted voxels) while matching deformable shape alignment accuracy.
 - **Hardware Accessibility for 3D/4D Volumetric AI**: By reducing peak training activation memory by $26.9\times$ at $128^3$ resolution ($768.2\text{ MB}$ vs. $20,640.1\text{ MB}$ for standard unrolled backpropagation), `sympldiff` enables research laboratories without high-end multi-GPU computing clusters to train deep, high-resolution 3D registration models on standard commodity GPUs.
-- **Community Adoption**: The package provides an automated test suite verifying machine-precision volume conservation ($|\det(J) - 1| < 1.55 \times 10^{-15}$) and inverse recovery error ($< 4.44 \times 10^{-16}$) across operating systems (Linux, macOS, Windows) and modern Python releases (3.10–3.12).
+- **Reproducibility and Test Coverage**: The package provides an automated test suite verifying machine-precision volume conservation ($|\det(J) - 1| < 1.55 \times 10^{-15}$) and inverse recovery error ($< 4.44 \times 10^{-16}$) across operating systems (Linux, macOS, Windows) and modern Python releases (3.10–3.12).
 
 # Acknowledgements
 
-The author acknowledges computational infrastructure support from the Universidad Carlos III de Madrid and open-source contributions from the NumFOCUS scientific computing ecosystem.
+The author acknowledges computational infrastructure support from Universidad Carlos III de Madrid and open-source contributions from the NumFOCUS scientific computing ecosystem.
 
 # References
